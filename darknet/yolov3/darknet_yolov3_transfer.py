@@ -12,7 +12,7 @@ if __name__ == '__main__':
 
     MODEL_PATH = './yolov3.cfg'
     WEIGHT_PATH = './yolov3.weights'
-    RKNN_MODEL_PATH = './yolov3_416x234.rknn'
+    RKNN_MODEL_PATH = './yolov3_precompile.rknn'
     DATASET = './dataset.txt'
 
     # Create RKNN object
@@ -29,7 +29,7 @@ if __name__ == '__main__':
             exit(ret)
         print('done')
 
-        rknn.config(reorder_channel='0 1 2', mean_values=[[0, 0, 0]], std_values=[[255, 255, 255]])
+        rknn.config(reorder_channel='2 1 0', channel_mean_value='0 0 0 255')
 
         # Build model
         print('--> Building model')

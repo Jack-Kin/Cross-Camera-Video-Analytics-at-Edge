@@ -210,8 +210,10 @@ def download_yolov3_weight(dst_path):
 
 if __name__ == '__main__':
 
-    RKNN_MODEL_PATH = './yolov3_416.rknn'
-    im_file = './test_416x234.jpg'
+    # RKNN_MODEL_PATH = './yolov3_416.rknn'
+    RKNN_MODEL_PATH = './yolov3_precompile.rknn'
+    # im_file = './car_416x234.jpg'
+    im_file = './car_416x416.jpg'
 
 
     # Create RKNN object
