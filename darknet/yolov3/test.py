@@ -211,7 +211,7 @@ if __name__ == '__main__':
 
     MODEL_PATH = './yolov3.cfg'
     WEIGHT_PATH = './yolov3.weights'
-    RKNN_MODEL_PATH = './yolov3_416x234.rknn'
+    RKNN_MODEL_PATH = './yolov3_416.rknn'
     im_file = './test_416x234.jpg'
     DATASET = './dataset.txt'
 
@@ -268,6 +268,7 @@ if __name__ == '__main__':
     print('done')
 
     img = cv2.imread(im_file)
+    # img = cv2.resize(img, (416,416))
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     # inference

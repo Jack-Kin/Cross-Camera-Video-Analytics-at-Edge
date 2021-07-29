@@ -9,16 +9,15 @@ import os
 from rknn.api import RKNN
 
 
+
 GRID0 = 13
 GRID1 = 26
-GRID2 = 52
 LISTSIZE = 85
 SPAN = 3
 NUM_CLS = 80
 MAX_BOXES = 500
 OBJ_THRESH = 0.5
 NMS_THRESH = 0.6
-
 
 CLASSES = ("person", "bicycle", "car","motorbike ","aeroplane ","bus ","train","truck ","boat","traffic light",
            "fire hydrant","stop sign ","parking meter","bench","bird","cat","dog ","horse ","sheep","cow","elephant",
@@ -30,6 +29,7 @@ CLASSES = ("person", "bicycle", "car","motorbike ","aeroplane ","bus ","train","
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
+
 
 def process(input, mask, anchors):
 
@@ -122,14 +122,11 @@ def nms_boxes(boxes, scores):
     keep = np.array(keep)
     return keep
 
+
 def yolov3_post_process(input_data):
     # yolov3
-    masks = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
-    anchors = [[10, 13], [16, 30], [33, 23], [30, 61], [62, 45],
-              [59, 119], [116, 90], [156, 198], [373, 326]]
-    # yolov3-tiny
-    # masks = [[3, 4, 5], [0, 1, 2]]
-    # anchors = [[10, 14], [23, 27], [37, 58], [81, 82], [135, 169], [344, 319]]
+    masks = [[3, 4, 5], [0, 1, 2]]
+    anchors = [[10, 14], [23, 27], [37, 58], [81, 82], [135, 169], [344, 319]]
 
     boxes, classes, scores = [], [], []
     for input,mask in zip(input_data, masks):
@@ -165,7 +162,6 @@ def yolov3_post_process(input_data):
 
     return boxes, classes, scores
 
-
 def draw(image, boxes, scores, classes):
     """Draw the boxes on the image.
 
@@ -180,71 +176,111 @@ def draw(image, boxes, scores, classes):
         x, y, w, h = box
         print('class: {}, score: {}'.format(CLASSES[cl], score))
         print('box coordinate left,top,right,down: [{}, {}, {}, {}]'.format(x, y, x+w, y+h))
-        x *= image.shape[1]
-        y *= image.shape[0]
-        w *= image.shape[1]
-        h *= image.shape[0]
-        top = max(0, np.floor(x + 0.5).astype(int))
-        left = max(0, np.floor(y + 0.5).astype(int))
-        right = min(image.shape[1], np.floor(x + w + 0.5).astype(int))
-        bottom = min(image.shape[0], np.floor(y + h + 0.5).astype(int))
+        # x *= image.shape[1]
+        # y *= image.shape[0]
+        # w *= image.shape[1]
+        # h *= image.shape[0]
+        # top = max(0, np.floor(x + 0.5).astype(int))
+        # left = max(0, np.floor(y + 0.5).astype(int))
+        # right = min(image.shape[1], np.floor(x + w + 0.5).astype(int))
+        # bottom = min(image.shape[0], np.floor(y + h + 0.5).astype(int))
 
-        cv2.rectangle(image, (top, left), (right, bottom), (255, 0, 0), 2)
-        cv2.putText(image, '{0} {1:.2f}'.format(CLASSES[cl], score),
-                    (top, left - 6),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6, (0, 0, 255), 2)
+        # cv2.rectangle(image, (top, left), (right, bottom), (255, 0, 0), 2)
+        # cv2.putText(image, '{0} {1:.2f}'.format(CLASSES[cl], score),
+        #             (top, left - 6),
+        #             cv2.FONT_HERSHEY_SIMPLEX,
+        #             0.6, (0, 0, 255), 2)
 
-
+def download_yolov3_weight(dst_path):
+    if os.path.exists(dst_path):
+        print('yolov3.weight exist.')
+        return
+    print('Downloading yolov3.weights...')
+    url = 'https://pjreddie.com/media/files/yolov3.weights'
+    try:
+        urllib.request.urlretrieve(url, dst_path)
+    except urllib.error.HTTPError as e:
+        print('HTTPError code: ', e.code)
+        print('HTTPError reason: ', e.reason)
+        exit(-1)
+    except urllib.error.URLError as e:
+        print('URLError reason: ', e.reason)
+    else:
+        print('Download yolov3.weight success.') 
 
 if __name__ == '__main__':
 
-    RKNN_MODEL_PATH = './yolov3_416x234.rknn'
+    RKNN_MODEL_PATH = './yolov3_416.rknn'
     im_file = './test_416x234.jpg'
 
 
     # Create RKNN object
     rknn = RKNN()
 
+    # NEED_BUILD_MODEL = True
+    NEED_BUILD_MODEL = False
 
-    # Direct load rknn model
-    print('Loading RKNN model')
-    ret = rknn.load_rknn(RKNN_MODEL_PATH)
-    if ret != 0:
-        print('Load RKNN model failed.')
-        exit(ret)
-    print('done')
+    if NEED_BUILD_MODEL:
+        # Load caffe model
+        print('--> Loading model')
+        ret = rknn.load_darknet(model=MODEL_PATH, weight=WEIGHT_PATH)
+        if ret != 0:
+            print('load caffe model failed!')
+            exit(ret)
+        print('done')
 
+        rknn.config(reorder_channel='2 1 0', channel_mean_value='0 0 0 255')
 
-    # Init runtime environment
-    print('--> Init runtime environment')
+        # Build model
+        print('--> Building model')
+        ret = rknn.build(do_quantization=True, dataset='./dataset.txt')
+        if ret != 0:
+            print('build model failed.')
+            exit(ret)
+        print('done')
+
+        # Export rknn model
+        print('--> Export RKNN model')
+        ret = rknn.export_rknn(RKNN_MODEL_PATH)
+        if ret != 0:
+            print('Export rknn model failed.')
+            exit(ret)
+        print('done')
+    else:
+        # Direct load rknn model
+        print('Loading RKNN model')
+        ret = rknn.load_rknn(RKNN_MODEL_PATH)
+        if ret != 0:
+            print('load rknn model failed.')
+            exit(ret)
+        print('done')
+
+    print('--> init runtime')
+    # ret = rknn.init_runtime()
     ret = rknn.init_runtime()
     if ret != 0:
-        print('Init runtime environment failed.')
+        print('init runtime failed.')
         exit(ret)
     print('done')
 
     img = cv2.imread(im_file)
+    # img = cv2.resize(img, (416,416))
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-
-    # Inference
-    print('--> Running model')
+    # inference
+    print('--> inference')
     outputs = rknn.inference(inputs=[img])
     print('done')
 
     input0_data = outputs[0]
     input1_data = outputs[1]
-    input2_data = outputs[2]
 
     input0_data = input0_data.reshape(SPAN, LISTSIZE, GRID0, GRID0)
     input1_data = input1_data.reshape(SPAN, LISTSIZE, GRID1, GRID1)
-    input2_data = input2_data.reshape(SPAN, LISTSIZE, GRID2, GRID2)
 
-    input_data = list()
+    input_data = []
     input_data.append(np.transpose(input0_data, (2, 3, 0, 1)))
     input_data.append(np.transpose(input1_data, (2, 3, 0, 1)))
-    input_data.append(np.transpose(input2_data, (2, 3, 0, 1)))
 
     boxes, classes, scores = yolov3_post_process(input_data)
 
@@ -255,5 +291,4 @@ if __name__ == '__main__':
     # cv2.imshow("results", image)
     # cv2.waitKeyEx(0)
 
-    # Release RKNN
     rknn.release()
