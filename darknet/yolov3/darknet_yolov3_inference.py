@@ -7,6 +7,7 @@ import os
 # from PIL import Image
 # from tensorflow.python.platform import gfile
 from rknn.api import RKNN
+from timeit import default_timer as timer
 
 
 
@@ -15,9 +16,12 @@ GRID1 = 26
 LISTSIZE = 85
 SPAN = 3
 NUM_CLS = 80
-MAX_BOXES = 500
+# MAX_BOXES = 500
 OBJ_THRESH = 0.5
 NMS_THRESH = 0.6
+# OBJ_THRESH = 0.2
+# NMS_THRESH = 0.2
+
 
 CLASSES = ("person", "bicycle", "car","motorbike ","aeroplane ","bus ","train","truck ","boat","traffic light",
            "fire hydrant","stop sign ","parking meter","bench","bird","cat","dog ","horse ","sheep","cow","elephant",
@@ -191,106 +195,121 @@ def draw(image, boxes, scores, classes):
         #             cv2.FONT_HERSHEY_SIMPLEX,
         #             0.6, (0, 0, 255), 2)
 
-def download_yolov3_weight(dst_path):
-    if os.path.exists(dst_path):
-        print('yolov3.weight exist.')
-        return
-    print('Downloading yolov3.weights...')
-    url = 'https://pjreddie.com/media/files/yolov3.weights'
-    try:
-        urllib.request.urlretrieve(url, dst_path)
-    except urllib.error.HTTPError as e:
-        print('HTTPError code: ', e.code)
-        print('HTTPError reason: ', e.reason)
-        exit(-1)
-    except urllib.error.URLError as e:
-        print('URLError reason: ', e.reason)
-    else:
-        print('Download yolov3.weight success.') 
 
-if __name__ == '__main__':
-
-    # RKNN_MODEL_PATH = './yolov3_416.rknn'
+def load_model():
     RKNN_MODEL_PATH = './yolov3_precompile.rknn'
-    # im_file = './car_416x234.jpg'
-    im_file = './car_416x416.jpg'
-
-
     # Create RKNN object
     rknn = RKNN()
 
-    # NEED_BUILD_MODEL = True
-    NEED_BUILD_MODEL = False
-
-    if NEED_BUILD_MODEL:
-        # Load caffe model
-        print('--> Loading model')
-        ret = rknn.load_darknet(model=MODEL_PATH, weight=WEIGHT_PATH)
-        if ret != 0:
-            print('load caffe model failed!')
-            exit(ret)
-        print('done')
-
-        rknn.config(reorder_channel='2 1 0', channel_mean_value='0 0 0 255')
-
-        # Build model
-        print('--> Building model')
-        ret = rknn.build(do_quantization=True, dataset='./dataset.txt')
-        if ret != 0:
-            print('build model failed.')
-            exit(ret)
-        print('done')
-
-        # Export rknn model
-        print('--> Export RKNN model')
-        ret = rknn.export_rknn(RKNN_MODEL_PATH)
-        if ret != 0:
-            print('Export rknn model failed.')
-            exit(ret)
-        print('done')
-    else:
-        # Direct load rknn model
-        print('Loading RKNN model')
-        ret = rknn.load_rknn(RKNN_MODEL_PATH)
-        if ret != 0:
-            print('load rknn model failed.')
-            exit(ret)
-        print('done')
+    # Direct load rknn model
+    print('Loading RKNN model')
+    ret = rknn.load_rknn(RKNN_MODEL_PATH)
+    if ret != 0:
+        print('load rknn model failed.')
+        exit(ret)
+    print('done')
 
     print('--> init runtime')
-    # ret = rknn.init_runtime()
     ret = rknn.init_runtime()
+    # ret = rknn.init_runtime(target='rk1808')
     if ret != 0:
         print('init runtime failed.')
         exit(ret)
     print('done')
+    return rknn
 
-    img = cv2.imread(im_file)
-    # img = cv2.resize(img, (416,416))
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    # inference
-    print('--> inference')
-    outputs = rknn.inference(inputs=[img])
-    print('done')
+if __name__ == '__main__':
+    # load and init model
+    rknn = load_model()
 
-    input0_data = outputs[0]
-    input1_data = outputs[1]
+    accum_time = 0
+    curr_fps = 0
+    prev_time = timer()
+    fps = 'fps: ??'
 
-    input0_data = input0_data.reshape(SPAN, LISTSIZE, GRID0, GRID0)
-    input1_data = input1_data.reshape(SPAN, LISTSIZE, GRID1, GRID1)
 
-    input_data = []
-    input_data.append(np.transpose(input0_data, (2, 3, 0, 1)))
-    input_data.append(np.transpose(input1_data, (2, 3, 0, 1)))
+    try:
+        cnt = 1
+        while(cnt < 16):
+            im_file = './pic/6-' + str(cnt) +'.jpg'
+            print(im_file)
+            img = cv2.imread(im_file)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            testtime = timer()
+            outputs = rknn.inference(inputs=[img])
+            testtime2 = timer()
+            print("rknn use time {}", testtime2-testtime)
 
-    boxes, classes, scores = yolov3_post_process(input_data)
+            input0_data = outputs[0]
+            input1_data = outputs[1]
+            input0_data = input0_data.reshape(SPAN, LISTSIZE, GRID0, GRID0)
+            input1_data = input1_data.reshape(SPAN, LISTSIZE, GRID1, GRID1)
+            input_data = []
+            input_data.append(np.transpose(input0_data, (2, 3, 0, 1)))
+            input_data.append(np.transpose(input1_data, (2, 3, 0, 1)))
+            testtime=timer()
+            boxes, classes, scores = yolov3_post_process(input_data)    
+            testtime2=timer()
+            print("process use time: {}", testtime2-testtime)
 
-    image = cv2.imread(im_file)
-    if boxes is not None:
-        draw(image, boxes, scores, classes)
+            testtime=timer()
+            curr_time = timer()
+            exec_time = curr_time - prev_time
+            prev_time = curr_time
+            accum_time += exec_time
+            curr_fps += 1
+            if accum_time > 1:
+                accum_time -= 1
+                fps = "FPS: " + str(curr_fps)
+                curr_fps = 0    
+            if boxes is not None:
+                draw(img, boxes, scores, classes)
+            else:
+                print("No object detected")
+            c = cv2.waitKey(5) & 0xff
+            if c == 27:
+                cv2.destroyAllWindows()
+                print("before rknn release")
+                rknn.release()
+                print("after rknn release")
+                break;
+            testtime2=timer()
+            print("show image use time: {}", testtime2-testtime)
+            cnt+=1
 
-    # cv2.imshow("results", image)
-    # cv2.waitKeyEx(0)
+    except KeyboardInterrupt:
+        cv2.destroyAllWindows()
+        rknn.release()
 
-    rknn.release()
+
+    # im_file = './pic/test_416x234.jpg'
+    # img = cv2.imread(im_file)
+    # # img = cv2.resize(img, (416,416))
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # # inference
+    # print('--> inference')
+    # outputs = rknn.inference(inputs=[img])
+    # print('done')
+
+    # input0_data = outputs[0]
+    # input1_data = outputs[1]
+
+    # input0_data = input0_data.reshape(SPAN, LISTSIZE, GRID0, GRID0)
+    # input1_data = input1_data.reshape(SPAN, LISTSIZE, GRID1, GRID1)
+
+    # input_data = []
+    # input_data.append(np.transpose(input0_data, (2, 3, 0, 1)))
+    # input_data.append(np.transpose(input1_data, (2, 3, 0, 1)))
+
+    # boxes, classes, scores = yolov3_post_process(input_data)
+
+    # image = cv2.imread(im_file)
+    # if boxes is not None:
+    #     draw(image, boxes, scores, classes)
+
+    # # cv2.imshow("results", image)
+    # # cv2.waitKeyEx(0)
+
+    # rknn.release()
